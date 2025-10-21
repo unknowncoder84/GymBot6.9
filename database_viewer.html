@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Viewer - IronForge Pro</title>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            color: #000;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3);
+            border: 2px solid #ff0000;
+        }
+        h1 {
+            color: #ff0000;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #ff0000;
+            flex: 1;
+            min-width: 200px;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ff0000;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            background: linear-gradient(45deg, #ff0000, #cc0000);
+            color: white;
+            border: 2px solid #ff0000;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: linear-gradient(45deg, #cc0000, #990000);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4);
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .user-table th, .user-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .user-table th {
+            background: #ff0000;
+            color: white;
+            font-weight: bold;
+        }
+        .user-table tr:hover {
+            background: #f5f5f5;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #c62828;
+            margin-bottom: 20px;
+        }
+        .filter-input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+        .filter-input:focus {
+            outline: none;
+            border-color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-database"></i> IronForge Pro Database Viewer</h1>
+        
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="total-users">-</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="recent-users">-</div>
+                <div class="stat-label">Recent (24h)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="popular-goal">-</div>
+                <div class="stat-label">Popular Goal</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="loadUsers()">
+                <i class="fas fa-sync-alt"></i> Refresh Data
+            </button>
+            <button onclick="exportData()">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+            <button onclick="clearDatabase()" style="background: #dc3545; border-color: #dc3545;">
+                <i class="fas fa-trash"></i> Clear Database
+            </button>
+            <input type="text" class="filter-input" id="filter-input" placeholder="Filter by name, goal, or diet..." onkeyup="filterUsers()">
+        </div>
+
+        <div id="error-message"></div>
+        <div id="loading" class="loading" style="display: none;">
+            <i class="fas fa-spinner fa-spin"></i> Loading data...
+        </div>
+
+        <table class="user-table" id="user-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Age</th>
+                    <th>Weight (kg)</th>
+                    <th>Height (cm)</th>
+                    <th>Goal</th>
+                    <th>Experience</th>
+                    <th>Location</th>
+                    <th>Diet</th>
+                    <th>Budget</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody id="user-tbody">
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+    <script>
+        let allUsers = [];
+
+        async function loadUsers() {
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error-message');
+            
+            loading.style.display = 'block';
+            errorDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    allUsers = data.users;
+                    displayUsers(allUsers);
+                    updateStats(allUsers);
+                } else {
+                    throw new Error(data.message || 'Failed to load data');
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                errorDiv.innerHTML = `<div class="error">Error loading data: ${error.message}</div>`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function displayUsers(users) {
+            const tbody = document.getElementById('user-tbody');
+            tbody.innerHTML = '';
+
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 40px; color: #666;">No users found</td></tr>';
+                return;
+            }
+
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${user.id}</td>
+                    <td><strong>${user.name}</strong></td>
+                    <td>${user.age}</td>
+                    <td>${user.weight}</td>
+                    <td>${user.height}</td>
+                    <td><span style="background: #ff0000; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">${user.goal}</span></td>
+                    <td>${user.knowledge}</td>
+                    <td>${user.access}</td>
+                    <td>${user.diet}</td>
+                    <td>$${user.budget}</td>
+                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateStats(users) {
+            document.getElementById('total-users').textContent = users.length;
+
+            // Recent users (last 24 hours)
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const recentUsers = users.filter(user => new Date(user.created_at) > yesterday);
+            document.getElementById('recent-users').textContent = recentUsers.length;
+
+            // Most popular goal
+            const goalCounts = {};
+            users.forEach(user => {
+                goalCounts[user.goal] = (goalCounts[user.goal] || 0) + 1;
+            });
+            const popularGoal = Object.keys(goalCounts).reduce((a, b) => goalCounts[a] > goalCounts[b] ? a : b, 'None');
+            document.getElementById('popular-goal').textContent = popularGoal || 'None';
+        }
+
+        function filterUsers() {
+            const filterText = document.getElementById('filter-input').value.toLowerCase();
+            const filteredUsers = allUsers.filter(user => 
+                user.name.toLowerCase().includes(filterText) ||
+                user.goal.toLowerCase().includes(filterText) ||
+                user.diet.toLowerCase().includes(filterText) ||
+                user.knowledge.toLowerCase().includes(filterText)
+            );
+            displayUsers(filteredUsers);
+        }
+
+        function exportData() {
+            if (allUsers.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            const headers = ['ID', 'Name', 'Age', 'Weight', 'Height', 'Goal', 'Experience', 'Location', 'Equipment', 'Diet', 'Split', 'Budget', 'Created'];
+            const csvContent = [
+                headers.join(','),
+                ...allUsers.map(user => [
+                    user.id,
+                    `"${user.name}"`,
+                    user.age,
+                    user.weight,
+                    user.height,
+                    `"${user.goal}"`,
+                    `"${user.knowledge}"`,
+                    `"${user.access}"`,
+                    `"${user.equipment || 'none'}"`,
+                    `"${user.diet}"`,
+                    `"${user.split}"`,
+                    user.budget,
+                    `"${user.created_at}"`
+                ].join(','))
+            ].join('\\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ironforge_users_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        async function clearDatabase() {
+            if (!confirm('Are you sure you want to clear all user data? This action cannot be undone!')) {
+                return;
+            }
+
+            if (!confirm('This will permanently delete ALL user data. Are you absolutely sure?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/clear-database', { method: 'POST' });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Database cleared successfully');
+                    loadUsers();
+                } else {
+                    throw new Error(data.message || 'Failed to clear database');
+                }
+            } catch (error) {
+                alert('Error clearing database: ' + error.message);
+            }
+        }
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', loadUsers);
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadUsers, 30000);
+    </script>
+</body>
+</html>
